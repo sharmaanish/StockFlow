@@ -48,6 +48,12 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "tenants",
+    "accounts",
+    "catalog",
+    "inventory",
+    "customers",
+    "orders",
 ]
 
 
@@ -159,10 +165,12 @@ USE_TZ = True
 # -----------------------------------------------------------------------------
 
 STATIC_URL = "static/"
-
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # -----------------------------------------------------------------------------
 # Email
 # -----------------------------------------------------------------------------
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+AUTH_USER_MODEL = "accounts.User"
