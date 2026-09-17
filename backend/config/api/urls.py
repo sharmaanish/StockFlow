@@ -1,8 +1,11 @@
 from django.urls import path
 
 from .views import health_check, me
-from orders.views import OrderCreateAPIView
-
+from orders.views import (
+    OrderCreateAPIView,
+    OrderCancelAPIView,
+    OrderConfirmAPIView,
+)
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
 )
@@ -46,5 +49,17 @@ urlpatterns = [
         "auth/me/",
         me,
         name="auth-me",
+    ),
+
+    path(
+    "orders/<uuid:order_id>/cancel/",
+    OrderCancelAPIView.as_view(),
+    name="order-cancel",
+    ),
+
+    path(
+        "orders/<uuid:order_id>/confirm/",
+        OrderConfirmAPIView.as_view(),
+        name="order-confirm",
     ),
 ]

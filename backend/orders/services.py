@@ -117,3 +117,53 @@ def create_order(
     )
 
     return order
+
+@transaction.atomic
+def confirm_order(*, order, tenant):
+    if order.tenant_id != tenant.id:
+        raise ValidationError(
+            "Order does not belong to this tenant."
+        )
+
+    if order.status != Order.Status.PENDING:
+        raise ValidationError(
+            "Only pending orders can be confirmed."
+        )
+
+    order.status = Order.Status.CONFIRMED
+    order.save(
+        update_fields=["status", "updated_at"]
+    )
+
+    return order
+
+@transaction.atomic
+def cancel_order(*, order, tenant):
+    if order.tenant_id != tenant.id:
+        raise ValidationError(
+            "Order does not belong to this tenant."
+        )
+
+    if order.status != Order.Status.PENDING:
+        raise ValidationError(
+            "Only pending orders can be cancelled."
+        )
+
+    for item in order.items.all():
+        inventory = (
+            Inventory.objects
+            .select_for_update()
+            .get(product=item.product)
+        )
+
+        inventory.reserved_quantity -= item.quantity
+        inventory.save(
+            update_fields=["reserved_quantity", "updated_at"]
+        )
+
+    order.status = Order.Status.CANCELLED
+    order.save(
+        update_fields=["status", "updated_at"]
+    )
+
+    return order

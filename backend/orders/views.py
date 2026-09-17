@@ -1,4 +1,6 @@
 from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
+
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from rest_framework.response import Response
@@ -6,34 +8,36 @@ from rest_framework.views import APIView
 
 from catalog.models import Product
 from customers.models import Customer
+from orders.models import Order
 
 from .serializers import OrderCreateSerializer
-from .services import create_order
-
+from .services import cancel_order, confirm_order, create_order
 
 class OrderCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
+
     def post(self, request):
-        # Validate the incoming JSON.
         serializer = OrderCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        tenant = request.user.tenant
 
         customer_id = serializer.validated_data["customer"]
         item_data = serializer.validated_data["items"]
 
-        # Convert customer UUID into a Customer object.
-        # customer = Customer.objects.get(id=customer_id)
-        from django.shortcuts import get_object_or_404
-        customer = get_object_or_404(Customer, id=customer_id)
+        customer = get_object_or_404(
+            Customer,
+            id=customer_id,
+        )
+
         service_items = []
 
-        # Convert product UUIDs into Product objects.
         for item in item_data:
-            # product = Product.objects.get(id=item["product"])
             product = get_object_or_404(
                 Product,
                 id=item["product"],
             )
+
             service_items.append(
                 {
                     "product": product,
@@ -42,9 +46,8 @@ class OrderCreateAPIView(APIView):
             )
 
         try:
-            # Business rules and inventory reservation happen in the service.
             order = create_order(
-                tenant=customer.tenant,
+                tenant=tenant,
                 customer=customer,
                 items=service_items,
             )
@@ -63,4 +66,67 @@ class OrderCreateAPIView(APIView):
                 "total_amount": str(order.total_amount),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class OrderCancelAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, order_id):
+        tenant = request.user.tenant
+
+        order = get_object_or_404(
+            Order,
+            id=order_id,
+        )
+
+        try:
+            order = cancel_order(
+                order=order,
+                tenant=tenant,
+            )
+
+        except ValidationError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "id": str(order.id),
+                "status": order.status,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+class OrderConfirmAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, order_id):
+        tenant = request.user.tenant
+
+        order = get_object_or_404(
+            Order,
+            id=order_id,
+        )
+
+        try:
+            order = confirm_order(
+                order=order,
+                tenant=tenant,
+            )
+
+        except ValidationError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "id": str(order.id),
+                "status": order.status,
+            },
+            status=status.HTTP_200_OK,
         )

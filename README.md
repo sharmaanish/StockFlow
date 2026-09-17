@@ -585,7 +585,7 @@ Phase 5 — Frontend
  Orders
  Customers
  Users
-[Reports
+Reports
 Phase 6 — Quality & Production
  Automated testing
  E2E testing

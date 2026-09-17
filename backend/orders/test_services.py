@@ -7,9 +7,8 @@ from catalog.models import Product
 from customers.models import Customer
 from inventory.models import Inventory
 from tenants.models import Tenant
-from orders.models import Order
-from orders.services import create_order
-
+from orders.models import Order, OrderItem
+from orders.services import cancel_order, create_order, confirm_order
 class CreateOrderTests(TestCase):
 
     def setUp(self):
@@ -189,4 +188,320 @@ class CreateOrderTests(TestCase):
         self.assertEqual(
             Order.objects.count(),
             0,
+        )
+
+    def test_create_order_rejects_customer_from_different_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name="Other Customer",
+            email="other@example.com",
+        )
+
+        with self.assertRaises(ValidationError):
+            create_order(
+                tenant=self.tenant,
+                customer=other_customer,
+                items=[
+                    {
+                        "product": self.product,
+                        "quantity": 1,
+                    }
+                ],
+            )
+
+        self.inventory.refresh_from_db()
+
+        self.assertEqual(
+            self.inventory.reserved_quantity,
+            0,
+        )
+
+        self.assertEqual(
+            Order.objects.count(),
+            0,
+        )
+
+    def test_create_order_rejects_product_from_different_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_product = Product.objects.create(
+            tenant=other_tenant,
+            sku="OTHER-001",
+            name="Other Product",
+            price=Decimal("75.00"),
+        )
+
+        Inventory.objects.create(
+            product=other_product,
+            quantity=10,
+            reserved_quantity=0,
+        )
+
+        with self.assertRaises(ValidationError):
+            create_order(
+                tenant=self.tenant,
+                customer=self.customer,
+                items=[
+                    {
+                        "product": other_product,
+                        "quantity": 1,
+                    }
+                ],
+            )
+
+        self.inventory.refresh_from_db()
+
+        self.assertEqual(
+            self.inventory.reserved_quantity,
+            0,
+        )
+
+        self.assertEqual(
+            Order.objects.count(),
+            0,
+        )
+
+    def test_create_order_rejects_inactive_customer(self):
+        self.customer.is_active = False
+        self.customer.save(update_fields=["is_active"])
+
+        with self.assertRaises(ValidationError):
+            create_order(
+                tenant=self.tenant,
+                customer=self.customer,
+                items=[
+                    {
+                        "product": self.product,
+                        "quantity": 1,
+                    }
+                ],
+            )
+
+        self.inventory.refresh_from_db()
+
+        self.assertEqual(
+            self.inventory.reserved_quantity,
+            0,
+        )
+
+        self.assertEqual(
+            Order.objects.count(),
+            0,
+        )
+
+    def test_create_order_rejects_inactive_product(self):
+        self.product.is_active = False
+        self.product.save(update_fields=["is_active"])
+
+        with self.assertRaises(ValidationError):
+            create_order(
+                tenant=self.tenant,
+                customer=self.customer,
+                items=[
+                    {
+                        "product": self.product,
+                        "quantity": 1,
+                    }
+                ],
+            )
+
+        self.inventory.refresh_from_db()
+
+        self.assertEqual(
+            self.inventory.reserved_quantity,
+            0,
+        )
+
+        self.assertEqual(
+            Order.objects.count(),
+            0,
+        )
+
+    def test_create_order_rejects_empty_items(self):
+        with self.assertRaises(ValidationError):
+            create_order(
+                tenant=self.tenant,
+                customer=self.customer,
+                items=[],
+            )
+
+        self.assertEqual(
+            Order.objects.count(),
+            0,
+        )
+
+    def test_confirm_pending_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+        )
+
+        confirmed_order = confirm_order(
+            order=order,
+            tenant=self.tenant,
+        )
+
+        self.assertEqual(
+            confirmed_order.status,
+            Order.Status.CONFIRMED,
+        )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.CONFIRMED,
+        )
+
+    def test_cannot_confirm_non_pending_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.CONFIRMED,
+        )
+
+        with self.assertRaises(ValidationError):
+            confirm_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+    def test_cannot_confirm_order_from_another_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        order = Order.objects.create(
+            tenant=other_tenant,
+            customer=self.customer,
+        )
+
+        with self.assertRaises(ValidationError):
+            confirm_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+    def test_cancel_pending_order_releases_inventory(self):
+        inventory = Inventory.objects.get(
+            product=self.product,
+        )
+
+        inventory.quantity = 100
+        inventory.reserved_quantity = 2
+        inventory.save()
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+        )
+
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=self.product.price,
+        )
+
+        cancelled_order = cancel_order(
+            order=order,
+            tenant=self.tenant,
+        )
+
+        self.assertEqual(
+            cancelled_order.status,
+            Order.Status.CANCELLED,
+        )
+
+        inventory.refresh_from_db()
+
+        self.assertEqual(
+            inventory.quantity,
+            100,
+        )
+
+        self.assertEqual(
+            inventory.reserved_quantity,
+            0,
+        )
+
+
+    def test_cannot_cancel_non_pending_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.CONFIRMED,
+        )
+
+        with self.assertRaises(ValidationError):
+            cancel_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+
+    def test_cannot_cancel_order_from_another_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name="Other Customer",
+        )
+
+        order = Order.objects.create(
+            tenant=other_tenant,
+            customer=other_customer,
+        )
+
+        with self.assertRaises(ValidationError):
+            cancel_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+
+    def test_cancel_order_does_not_change_inventory_when_validation_fails(self):
+        inventory = Inventory.objects.get(
+            product=self.product,
+        )
+
+        inventory.quantity = 100
+        inventory.reserved_quantity = 2
+        inventory.save()
+
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.CONFIRMED,
+        )
+
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=self.product.price,
+        )
+
+        with self.assertRaises(ValidationError):
+            cancel_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        inventory.refresh_from_db()
+
+        self.assertEqual(
+            inventory.reserved_quantity,
+            2,
         )
