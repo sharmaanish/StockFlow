@@ -7,7 +7,7 @@ from customers.models import Customer
 from inventory.models import Inventory
 from tenants.models import Tenant
 from accounts.models import User
-from orders.models import Order
+from orders.models import Order, OrderItem
 
 class OrderAPITestCase(APITestCase):
 
@@ -487,6 +487,7 @@ class OrderAPITestCase(APITestCase):
             self.inventory.reserved_quantity,
             2,
         )
+    
     def test_cancel_order_from_different_tenant(self):
         create_response = self.client.post(
             "/api/v1/orders/",
@@ -723,3 +724,390 @@ class OrderAPITestCase(APITestCase):
             self.inventory.reserved_quantity,
             2,
         )
+
+    def test_ship_processing_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PROCESSING,
+        )
+
+        response = self.client.post(
+            f"/api/v1/orders/{order.id}/ship/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.SHIPPED,
+        )
+
+    def test_ship_order_requires_authentication(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PROCESSING,
+        )
+
+        self.client.force_authenticate(user=None)
+
+        response = self.client.post(
+            f"/api/v1/orders/{order.id}/ship/",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_ship_missing_order(self):
+        response = self.client.post(
+            "/api/v1/orders/00000000-0000-0000-0000-000000000000/ship/",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_ship_non_processing_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PENDING,
+        )
+
+        response = self.client.post(
+            f"/api/v1/orders/{order.id}/ship/",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PENDING,
+        )
+
+    def test_ship_order_from_different_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name="Other Customer",
+        )
+
+        order = Order.objects.create(
+            tenant=other_tenant,
+            customer=other_customer,
+            status=Order.Status.PROCESSING,
+        )
+
+        response = self.client.post(
+            f"/api/v1/orders/{order.id}/ship/",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PROCESSING,
+        )
+
+    def test_deliver_shipped_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.SHIPPED,
+        )
+
+        response = self.client.post(
+            f"/api/v1/orders/{order.id}/deliver/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.DELIVERED,
+        )
+
+    def test_deliver_order_requires_authentication(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.SHIPPED,
+        )
+
+        self.client.force_authenticate(user=None)
+
+        response = self.client.post(
+            f"/api/v1/orders/{order.id}/deliver/",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_deliver_missing_order(self):
+        response = self.client.post(
+            "/api/v1/orders/00000000-0000-0000-0000-000000000000/deliver/",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_deliver_non_shipped_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PROCESSING,
+        )
+
+        response = self.client.post(
+            f"/api/v1/orders/{order.id}/deliver/",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PROCESSING,
+        )
+
+    def test_deliver_order_from_different_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name="Other Customer",
+        )
+
+        order = Order.objects.create(
+            tenant=other_tenant,
+            customer=other_customer,
+            status=Order.Status.SHIPPED,
+        )
+
+        response = self.client.post(
+            f"/api/v1/orders/{order.id}/deliver/",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.SHIPPED,
+        )
+
+    def test_retrieve_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PROCESSING,
+            total_amount=Decimal("500.00"),
+        )
+
+        product = Product.objects.create(
+            tenant=self.tenant,
+            sku="TEST-002",
+            name="Test Product 2",
+            price=Decimal("250.00"),
+        )
+
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=2,
+            unit_price=Decimal("250.00"),
+        )
+
+        response = self.client.get(
+            f"/api/v1/orders/{order.id}/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["id"], str(order.id))
+        self.assertEqual(response.data["status"], Order.Status.PROCESSING)
+        self.assertEqual(response.data["total_amount"], "500.00")
+
+        self.assertEqual(len(response.data["items"]), 1)
+        self.assertEqual(
+            response.data["items"][0]["product"],
+            str(product.id),
+        )
+        self.assertEqual(
+            response.data["items"][0]["quantity"],
+            2,
+        )
+        self.assertEqual(
+            response.data["items"][0]["unit_price"],
+            "250.00",
+        )
+
+    def test_retrieve_order_requires_authentication(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+        )
+
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get(
+            f"/api/v1/orders/{order.id}/",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_retrieve_missing_order(self):
+        response = self.client.get(
+            "/api/v1/orders/00000000-0000-0000-0000-000000000000/",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_cannot_retrieve_order_from_different_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name="Other Customer",
+        )
+
+        order = Order.objects.create(
+            tenant=other_tenant,
+            customer=other_customer,
+        )
+
+        response = self.client.get(
+            f"/api/v1/orders/{order.id}/",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_retrieve_order_without_items(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            total_amount=0,
+        )
+
+        response = self.client.get(
+            f"/api/v1/orders/{order.id}/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["id"], str(order.id))
+        self.assertEqual(response.data["items"], [])
+
+    def test_list_orders(self):
+        order_1 = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PENDING,
+            total_amount=Decimal("100.00"),
+        )
+
+        order_2 = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.CONFIRMED,
+            total_amount=Decimal("200.00"),
+        )
+
+        response = self.client.get(
+            "/api/v1/orders/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 2)
+
+        returned_ids = {
+            order["id"]
+            for order in response.data
+        }
+
+        self.assertEqual(
+            returned_ids,
+            {
+                str(order_1.id),
+                str(order_2.id),
+            },
+        )
+
+
+    def test_list_orders_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get(
+            "/api/v1/orders/",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+
+    def test_list_orders_only_returns_current_tenant_orders(self):
+        tenant_2 = Tenant.objects.create(
+            name="Second Tenant",
+            slug="second-tenant",
+        )
+
+        customer_2 = Customer.objects.create(
+            tenant=tenant_2,
+            name="Second Customer",
+            email="second@example.com",
+        )
+
+        tenant_1_order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            total_amount=Decimal("100.00"),
+        )
+
+        tenant_2_order = Order.objects.create(
+            tenant=tenant_2,
+            customer=customer_2,
+            total_amount=Decimal("200.00"),
+        )
+
+        response = self.client.get(
+            "/api/v1/orders/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        returned_ids = {
+            order["id"]
+            for order in response.data
+        }
+
+        self.assertIn(
+            str(tenant_1_order.id),
+            returned_ids,
+        )
+
+        self.assertNotIn(
+            str(tenant_2_order.id),
+            returned_ids,
+        )
+
+
+    def test_list_orders_returns_empty_list_when_no_orders_exist(self):
+        response = self.client.get(
+            "/api/v1/orders/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])

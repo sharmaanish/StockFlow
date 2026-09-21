@@ -2,7 +2,7 @@ from rest_framework import serializers
 # Import DRF's serializer classes.
 # These help us convert JSON ↔ Python data
 # and validate incoming API data.
-
+from .models import Order, OrderItem
 
 class OrderItemInputSerializer(serializers.Serializer):
     # This describes ONE product line coming into an order.
@@ -16,7 +16,6 @@ class OrderItemInputSerializer(serializers.Serializer):
 
     product = serializers.UUIDField()
     quantity = serializers.IntegerField(min_value=1)
-
 
 class OrderCreateSerializer(serializers.Serializer):
     # This describes the complete incoming "create order" request.
@@ -47,3 +46,33 @@ class OrderCreateSerializer(serializers.Serializer):
     #
     # allow_empty=False:
     # An order cannot be created with zero items.
+
+class OrderItemResponseSerializer(serializers.ModelSerializer):
+    product = serializers.UUIDField(source="product.id")
+
+    class Meta:
+        model = OrderItem
+        fields = [
+            "id",
+            "product",
+            "quantity",
+            "unit_price",
+        ]
+
+class OrderResponseSerializer(serializers.ModelSerializer):
+    items = OrderItemResponseSerializer(
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "customer",
+            "status",
+            "total_amount",
+            "created_at",
+            "updated_at",
+            "items",
+        ]

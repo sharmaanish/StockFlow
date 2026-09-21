@@ -167,3 +167,59 @@ def cancel_order(*, order, tenant):
     )
 
     return order
+
+@transaction.atomic
+def start_processing_order(*, order, tenant):
+    if order.tenant_id != tenant.id:
+        raise ValidationError(
+            "Order does not belong to this tenant."
+        )
+
+    if order.status != Order.Status.CONFIRMED:
+        raise ValidationError(
+            "Only confirmed orders can start processing."
+        )
+
+    order.status = Order.Status.PROCESSING
+    order.save(
+        update_fields=["status", "updated_at"]
+    )
+
+    return order
+
+@transaction.atomic
+def ship_order(*, order, tenant):
+    if order.tenant_id != tenant.id:
+        raise ValidationError(
+            "Order does not belong to this tenant."
+        )
+
+    if order.status != Order.Status.PROCESSING:
+        raise ValidationError(
+            "Only processing orders can be shipped."
+        )
+
+    order.status = Order.Status.SHIPPED
+    order.save(
+        update_fields=["status", "updated_at"]
+    )
+
+    return order
+
+@transaction.atomic
+def deliver_order(*, order, tenant):
+    if order.tenant_id != tenant.id:
+        raise ValidationError(
+            "Order does not belong to this tenant."
+        )
+
+    if order.status != Order.Status.SHIPPED:
+        raise ValidationError(
+            "Only shipped orders can be delivered."
+        )
+
+    order.status = Order.Status.DELIVERED
+    order.save(
+        update_fields=["status", "updated_at"]
+    )
+    return order

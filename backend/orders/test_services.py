@@ -8,7 +8,15 @@ from customers.models import Customer
 from inventory.models import Inventory
 from tenants.models import Tenant
 from orders.models import Order, OrderItem
-from orders.services import cancel_order, create_order, confirm_order
+from orders.services import (
+    cancel_order,
+    create_order,
+    confirm_order,
+    start_processing_order,
+    ship_order,
+    deliver_order,
+)
+
 class CreateOrderTests(TestCase):
 
     def setUp(self):
@@ -504,4 +512,292 @@ class CreateOrderTests(TestCase):
         self.assertEqual(
             inventory.reserved_quantity,
             2,
+        )
+
+    def test_start_processing_confirmed_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.CONFIRMED,
+        )
+
+        processing_order = start_processing_order(
+            order=order,
+            tenant=self.tenant,
+        )
+
+        self.assertEqual(
+            processing_order.status,
+            Order.Status.PROCESSING,
+        )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PROCESSING,
+        )
+
+    def test_cannot_start_processing_pending_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PENDING,
+        )
+
+        with self.assertRaises(ValidationError):
+            start_processing_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PENDING,
+        )
+
+    def test_cannot_start_processing_non_confirmed_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.CANCELLED,
+        )
+
+        with self.assertRaises(ValidationError):
+            start_processing_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.CANCELLED,
+        )
+
+    def test_cannot_start_processing_order_from_another_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name="Other Customer",
+        )
+
+        order = Order.objects.create(
+            tenant=other_tenant,
+            customer=other_customer,
+            status=Order.Status.CONFIRMED,
+        )
+
+        with self.assertRaises(ValidationError):
+            start_processing_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.CONFIRMED,
+        )
+
+    def test_ship_processing_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PROCESSING,
+        )
+
+        shipped_order = ship_order(
+            order=order,
+            tenant=self.tenant,
+        )
+
+        self.assertEqual(
+            shipped_order.status,
+            Order.Status.SHIPPED,
+        )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.SHIPPED,
+        )
+
+
+    def test_cannot_ship_pending_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PENDING,
+        )
+
+        with self.assertRaises(ValidationError):
+            ship_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PENDING,
+        )
+
+
+    def test_cannot_ship_confirmed_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.CONFIRMED,
+        )
+
+        with self.assertRaises(ValidationError):
+            ship_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.CONFIRMED,
+        )
+
+
+    def test_cannot_ship_order_from_another_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name="Other Customer",
+        )
+
+        order = Order.objects.create(
+            tenant=other_tenant,
+            customer=other_customer,
+            status=Order.Status.PROCESSING,
+        )
+
+        with self.assertRaises(ValidationError):
+            ship_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PROCESSING,
+        )
+
+    def test_deliver_shipped_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.SHIPPED,
+        )
+
+        result = deliver_order(
+            order=order,
+            tenant=self.tenant,
+        )
+
+        self.assertEqual(
+            result.status,
+            Order.Status.DELIVERED,
+        )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.DELIVERED,
+        )
+
+
+    def test_cannot_deliver_pending_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PENDING,
+        )
+
+        with self.assertRaises(ValidationError):
+            deliver_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PENDING,
+        )
+
+
+    def test_cannot_deliver_processing_order(self):
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PROCESSING,
+        )
+
+        with self.assertRaises(ValidationError):
+            deliver_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.PROCESSING,
+        )
+
+
+    def test_cannot_deliver_order_from_another_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name="Other Customer",
+        )
+
+        order = Order.objects.create(
+            tenant=other_tenant,
+            customer=other_customer,
+            status=Order.Status.SHIPPED,
+        )
+
+        with self.assertRaises(ValidationError):
+            deliver_order(
+                order=order,
+                tenant=self.tenant,
+            )
+
+        order.refresh_from_db()
+
+        self.assertEqual(
+            order.status,
+            Order.Status.SHIPPED,
         )
