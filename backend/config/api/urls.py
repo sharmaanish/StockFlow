@@ -15,8 +15,15 @@ from payments.views import PaymentCreateAPIView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
 )
-
-
+from shipping.views import (
+    ShipmentCreateAPIView,
+    ShipmentStatusUpdateAPIView,
+    ShipmentRetrieveAPIView,
+)
+from audit.views import (
+    AuditLogListAPIView,
+    AuditLogRetrieveAPIView,
+)
 urlpatterns = [
 
     path(
@@ -84,5 +91,33 @@ urlpatterns = [
     "payments/",
     PaymentCreateAPIView.as_view(),
     name="payment-create",
+    ),
+    path(
+        "shipments/",
+        ShipmentCreateAPIView.as_view(),
+        name="shipment-create",
+    ),
+
+    path(
+        "shipments/<uuid:shipment_id>/status/",
+        ShipmentStatusUpdateAPIView.as_view(),
+        name="shipment-status-update",
+    ),
+
+    path(
+        "shipments/<uuid:shipment_id>/",
+        ShipmentRetrieveAPIView.as_view(),
+        name="shipment-detail",
+    ),
+    path(
+    "audit-logs/",
+    AuditLogListAPIView.as_view(),
+    name="audit-log-list",
+),
+
+path(
+    "audit-logs/<uuid:audit_id>/",
+    AuditLogRetrieveAPIView.as_view(),
+    name="audit-log-detail",
 ),
 ]

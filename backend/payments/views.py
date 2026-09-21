@@ -38,6 +38,7 @@ class PaymentCreateAPIView(APIView):
                 order=order,
                 amount=serializer.validated_data["amount"],
                 method=serializer.validated_data["method"],
+                user=request.user,
             )
 
         except ValidationError as exc:

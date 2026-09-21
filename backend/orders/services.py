@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from audit.services import create_audit_log
 from inventory.models import Inventory
 from .models import Order, OrderItem
 
@@ -13,6 +14,7 @@ def create_order(
     tenant,
     customer,
     items,
+    user=None,
 ):
     if not items:
         raise ValidationError(
@@ -116,10 +118,23 @@ def create_order(
         update_fields=["total_amount", "updated_at"]
     )
 
+    create_audit_log(
+        tenant=tenant,
+        user=user,
+        action="ORDER_CREATED",
+        entity_type="Order",
+        entity_id=order.id,
+        metadata={
+            "customer_id": str(customer.id),
+            "total_amount": str(order.total_amount),
+        },
+    )
+
     return order
 
+
 @transaction.atomic
-def confirm_order(*, order, tenant):
+def confirm_order(*, order, tenant, user=None):
     if order.tenant_id != tenant.id:
         raise ValidationError(
             "Order does not belong to this tenant."
@@ -135,10 +150,19 @@ def confirm_order(*, order, tenant):
         update_fields=["status", "updated_at"]
     )
 
+    create_audit_log(
+        tenant=tenant,
+        user=user,
+        action="ORDER_CONFIRMED",
+        entity_type="Order",
+        entity_id=order.id,
+    )
+
     return order
 
+
 @transaction.atomic
-def cancel_order(*, order, tenant):
+def cancel_order(*, order, tenant, user=None):
     if order.tenant_id != tenant.id:
         raise ValidationError(
             "Order does not belong to this tenant."
@@ -166,10 +190,19 @@ def cancel_order(*, order, tenant):
         update_fields=["status", "updated_at"]
     )
 
+    create_audit_log(
+        tenant=tenant,
+        user=user,
+        action="ORDER_CANCELLED",
+        entity_type="Order",
+        entity_id=order.id,
+    )
+
     return order
 
+
 @transaction.atomic
-def start_processing_order(*, order, tenant):
+def start_processing_order(*, order, tenant, user=None):
     if order.tenant_id != tenant.id:
         raise ValidationError(
             "Order does not belong to this tenant."
@@ -185,10 +218,19 @@ def start_processing_order(*, order, tenant):
         update_fields=["status", "updated_at"]
     )
 
+    create_audit_log(
+        tenant=tenant,
+        user=user,
+        action="ORDER_PROCESSING_STARTED",
+        entity_type="Order",
+        entity_id=order.id,
+    )
+
     return order
 
+
 @transaction.atomic
-def ship_order(*, order, tenant):
+def ship_order(*, order, tenant, user=None):
     if order.tenant_id != tenant.id:
         raise ValidationError(
             "Order does not belong to this tenant."
@@ -204,10 +246,19 @@ def ship_order(*, order, tenant):
         update_fields=["status", "updated_at"]
     )
 
+    create_audit_log(
+        tenant=tenant,
+        user=user,
+        action="ORDER_SHIPPED",
+        entity_type="Order",
+        entity_id=order.id,
+    )
+
     return order
 
+
 @transaction.atomic
-def deliver_order(*, order, tenant):
+def deliver_order(*, order, tenant, user=None):
     if order.tenant_id != tenant.id:
         raise ValidationError(
             "Order does not belong to this tenant."
@@ -222,4 +273,13 @@ def deliver_order(*, order, tenant):
     order.save(
         update_fields=["status", "updated_at"]
     )
+
+    create_audit_log(
+        tenant=tenant,
+        user=user,
+        action="ORDER_DELIVERED",
+        entity_type="Order",
+        entity_id=order.id,
+    )
+
     return order

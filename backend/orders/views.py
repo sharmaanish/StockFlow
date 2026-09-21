@@ -9,8 +9,10 @@ from rest_framework.views import APIView
 from catalog.models import Product
 from customers.models import Customer
 from orders.models import Order
-from .serializers import OrderResponseSerializer
-from .serializers import OrderCreateSerializer
+from .serializers import (
+    OrderCreateSerializer,
+    OrderResponseSerializer,
+)
 from .services import (
     cancel_order,
     confirm_order,
@@ -45,8 +47,12 @@ class OrderListCreateAPIView(APIView):
         )
 
     def post(self, request):
-        serializer = OrderCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        serializer = OrderCreateSerializer(
+            data=request.data
+        )
+        serializer.is_valid(
+            raise_exception=True
+        )
 
         tenant = request.user.tenant
 
@@ -78,6 +84,7 @@ class OrderListCreateAPIView(APIView):
                 tenant=tenant,
                 customer=customer,
                 items=service_items,
+                user=request.user,
             )
 
         except ValidationError as exc:
@@ -112,6 +119,7 @@ class OrderCancelAPIView(APIView):
             order = cancel_order(
                 order=order,
                 tenant=tenant,
+                user=request.user,
             )
 
         except ValidationError as exc:
@@ -144,6 +152,7 @@ class OrderConfirmAPIView(APIView):
             order = confirm_order(
                 order=order,
                 tenant=tenant,
+                user=request.user,
             )
 
         except ValidationError as exc:
@@ -176,6 +185,7 @@ class OrderStartProcessingAPIView(APIView):
             order = start_processing_order(
                 order=order,
                 tenant=tenant,
+                user=request.user,
             )
 
         except ValidationError as exc:
@@ -208,6 +218,7 @@ class OrderShipAPIView(APIView):
             order = ship_order(
                 order=order,
                 tenant=tenant,
+                user=request.user,
             )
 
         except ValidationError as exc:
@@ -240,6 +251,7 @@ class OrderDeliverAPIView(APIView):
             order = deliver_order(
                 order=order,
                 tenant=tenant,
+                user=request.user,
             )
 
         except ValidationError as exc:
