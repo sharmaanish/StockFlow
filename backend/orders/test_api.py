@@ -9,6 +9,7 @@ from tenants.models import Tenant
 from accounts.models import User
 from orders.models import Order, OrderItem
 
+
 class OrderAPITestCase(APITestCase):
 
     def setUp(self):
@@ -153,7 +154,7 @@ class OrderAPITestCase(APITestCase):
             self.inventory.reserved_quantity,
             0,
         )
-    
+
     def test_create_order_requires_authentication(self):
         self.client.force_authenticate(user=None)
 
@@ -411,7 +412,7 @@ class OrderAPITestCase(APITestCase):
             order.status,
             Order.Status.CANCELLED,
         )
-    
+
     def test_cancel_order_requires_authentication(self):
         create_response = self.client.post(
             "/api/v1/orders/",
@@ -487,7 +488,7 @@ class OrderAPITestCase(APITestCase):
             self.inventory.reserved_quantity,
             2,
         )
-    
+
     def test_cancel_order_from_different_tenant(self):
         create_response = self.client.post(
             "/api/v1/orders/",
@@ -666,6 +667,13 @@ class OrderAPITestCase(APITestCase):
         self.assertEqual(
             order.status,
             Order.Status.CANCELLED,
+        )
+
+        self.inventory.refresh_from_db()
+
+        self.assertEqual(
+            self.inventory.reserved_quantity,
+            2,
         )
 
     def test_confirm_order_from_different_tenant(self):
@@ -936,19 +944,34 @@ class OrderAPITestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["id"], str(order.id))
-        self.assertEqual(response.data["status"], Order.Status.PROCESSING)
-        self.assertEqual(response.data["total_amount"], "500.00")
+        self.assertEqual(
+            response.data["id"],
+            str(order.id),
+        )
+        self.assertEqual(
+            response.data["status"],
+            Order.Status.PROCESSING,
+        )
+        self.assertEqual(
+            response.data["total_amount"],
+            "500.00",
+        )
 
-        self.assertEqual(len(response.data["items"]), 1)
+        self.assertEqual(
+            len(response.data["items"]),
+            1,
+        )
+
         self.assertEqual(
             response.data["items"][0]["product"],
             str(product.id),
         )
+
         self.assertEqual(
             response.data["items"][0]["quantity"],
             2,
         )
+
         self.assertEqual(
             response.data["items"][0]["unit_price"],
             "250.00",
@@ -1009,8 +1032,14 @@ class OrderAPITestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["id"], str(order.id))
-        self.assertEqual(response.data["items"], [])
+        self.assertEqual(
+            response.data["id"],
+            str(order.id),
+        )
+        self.assertEqual(
+            response.data["items"],
+            [],
+        )
 
     def test_list_orders(self):
         order_1 = Order.objects.create(
@@ -1032,11 +1061,16 @@ class OrderAPITestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 2)
+
+        # Pagination returns the orders inside the "results" key.
+        self.assertEqual(
+            len(response.data["results"]),
+            2,
+        )
 
         returned_ids = {
             order["id"]
-            for order in response.data
+            for order in response.data["results"]
         }
 
         self.assertEqual(
@@ -1047,7 +1081,6 @@ class OrderAPITestCase(APITestCase):
             },
         )
 
-
     def test_list_orders_requires_authentication(self):
         self.client.force_authenticate(user=None)
 
@@ -1056,7 +1089,6 @@ class OrderAPITestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, 401)
-
 
     def test_list_orders_only_returns_current_tenant_orders(self):
         tenant_2 = Tenant.objects.create(
@@ -1088,9 +1120,10 @@ class OrderAPITestCase(APITestCase):
 
         self.assertEqual(response.status_code, 200)
 
+        # Pagination returns the orders inside the "results" key.
         returned_ids = {
             order["id"]
-            for order in response.data
+            for order in response.data["results"]
         }
 
         self.assertIn(
@@ -1103,11 +1136,372 @@ class OrderAPITestCase(APITestCase):
             returned_ids,
         )
 
-
     def test_list_orders_returns_empty_list_when_no_orders_exist(self):
         response = self.client.get(
             "/api/v1/orders/",
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, [])
+
+        # An empty paginated response contains an empty "results" list.
+        self.assertEqual(
+            response.data["results"],
+            [],
+        )
+
+    def test_search_orders_by_order_id(self):
+        # Create an order that we will search for.
+        # response = self.client.get(
+        #     "/api/v1/orders/",
+        #     {"search": "Unique Search Customer"},
+        # )
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PENDING,
+            total_amount=Decimal("100.00"),
+        )
+
+        response = self.client.get(
+            f"/api/v1/orders/?search={order.id}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(
+            results[0]["id"],
+            str(order.id),
+        )
+
+
+    def test_search_orders_by_customer_id(self):
+        # Create an order belonging to our test customer.
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            total_amount=Decimal("100.00"),
+        )
+
+        response = self.client.get(
+            f"/api/v1/orders/?search={self.customer.id}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(
+            results[0]["id"],
+            str(order.id),
+        )
+
+
+    def test_search_orders_by_customer_name(self):
+        # Use a distinctive customer name for the search.
+        self.customer.name = "Unique Search Customer"
+        self.customer.save(update_fields=["name"])
+
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            total_amount=Decimal("100.00"),
+        )
+
+        response = self.client.get(
+            "/api/v1/orders/?search=Unique%20Search%20Customer",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(
+            results[0]["id"],
+            str(order.id),
+        )
+
+
+    def test_search_orders_by_customer_email(self):
+        # Give the customer a searchable email address.
+        self.customer.email = "unique-search@example.com"
+        self.customer.save(update_fields=["email"])
+
+        order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            total_amount=Decimal("100.00"),
+        )
+
+        response = self.client.get(
+            "/api/v1/orders/?search=unique-search@example.com",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(
+            results[0]["id"],
+            str(order.id),
+        )
+
+
+    def test_search_orders_with_status_filter(self):
+        # Create one pending order and one confirmed order.
+        pending_order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.PENDING,
+            total_amount=Decimal("100.00"),
+        )
+
+        confirmed_order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            status=Order.Status.CONFIRMED,
+            total_amount=Decimal("200.00"),
+        )
+
+        response = self.client.get(
+            f"/api/v1/orders/?search={self.customer.id}"
+            f"&status={Order.Status.CONFIRMED}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(
+            results[0]["id"],
+            str(confirmed_order.id),
+        )
+
+        self.assertNotEqual(
+            results[0]["id"],
+            str(pending_order.id),
+        )
+
+
+    def test_search_orders_respects_tenant_isolation(self):
+        # Create an order in the current tenant.
+        current_tenant_order = Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            total_amount=Decimal("100.00"),
+        )
+
+        # Create another tenant and customer.
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant",
+        )
+
+        other_customer = Customer.objects.create(
+            tenant=other_tenant,
+            name=self.customer.name,
+            email=self.customer.email,
+        )
+
+        # Create an order for the other tenant.
+        other_tenant_order = Order.objects.create(
+            tenant=other_tenant,
+            customer=other_customer,
+            total_amount=Decimal("200.00"),
+        )
+
+        # Search using the shared customer name.
+        response = self.client.get(
+            f"/api/v1/orders/?search={self.customer.name}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        returned_ids = {
+            order["id"]
+            for order in results
+        }
+
+        # Our tenant's order must be visible.
+        self.assertIn(
+            str(current_tenant_order.id),
+            returned_ids,
+        )
+
+        # The other tenant's order must NOT be visible.
+        self.assertNotIn(
+            str(other_tenant_order.id),
+            returned_ids,
+        )
+
+
+    def test_search_orders_returns_empty_for_no_match(self):
+        # Create an order that should not match the search.
+        Order.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            total_amount=Decimal("100.00"),
+        )
+
+        response = self.client.get(
+            "/api/v1/orders/?search=does-not-exist",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(
+            response.data["results"],
+            [],
+        )
+
+    def test_ordering_orders_by_created_at_ascending(self):
+        response = self.client.get(
+            "/api/v1/orders/",
+            {"ordering": "created_at"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        created_dates = [
+            order["created_at"]
+            for order in results
+        ]
+
+        self.assertEqual(
+            created_dates,
+            sorted(created_dates),
+        )
+
+
+    def test_ordering_orders_by_created_at_descending(self):
+        response = self.client.get(
+            "/api/v1/orders/",
+            {"ordering": "-created_at"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        created_dates = [
+            order["created_at"]
+            for order in results
+        ]
+
+        self.assertEqual(
+            created_dates,
+            sorted(
+                created_dates,
+                reverse=True,
+            ),
+        )
+
+
+    def test_ordering_orders_by_total_amount_ascending(self):
+        response = self.client.get(
+            "/api/v1/orders/",
+            {"ordering": "total_amount"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        total_amounts = [
+            order["total_amount"]
+            for order in results
+        ]
+
+        self.assertEqual(
+            total_amounts,
+            sorted(total_amounts),
+        )
+
+
+    def test_ordering_orders_by_total_amount_descending(self):
+        response = self.client.get(
+            "/api/v1/orders/",
+            {"ordering": "-total_amount"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data["results"]
+
+        total_amounts = [
+            order["total_amount"]
+            for order in results
+        ]
+
+        self.assertEqual(
+            total_amounts,
+            sorted(
+                total_amounts,
+                reverse=True,
+            ),
+        )
+
+
+    def test_ordering_rejects_invalid_field(self):
+        response = self.client.get(
+            "/api/v1/orders/",
+            {"ordering": "customer"},
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertIn(
+            "Invalid ordering field",
+            response.data["detail"],
+        )
+
+
+    def test_ordering_works_with_status_filter(self):
+        response = self.client.get(
+            "/api/v1/orders/",
+            {
+                "status": "pending",
+                "ordering": "-created_at",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        results = response.data["results"]
+
+        created_dates = [
+            order["created_at"]
+            for order in results
+        ]
+
+        self.assertEqual(
+            created_dates,
+            sorted(
+                created_dates,
+                reverse=True,
+            ),
+        )
+
+        for order in results:
+            self.assertEqual(
+                order["status"],
+                "pending",
+            )
+
+            

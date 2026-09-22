@@ -62,7 +62,16 @@ INSTALLED_APPS = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # All API requests use JWT authentication by default.
     ],
+
+    "DEFAULT_PAGINATION_CLASS": (
+        "rest_framework.pagination.PageNumberPagination"
+        # Tell DRF to use page-number-based pagination.
+    ),
+
+    "PAGE_SIZE": 20,
+    # Return a maximum of 20 objects per page by default.
 }
 
 # -----------------------------------------------------------------------------
