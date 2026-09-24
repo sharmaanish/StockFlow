@@ -24,6 +24,10 @@ from audit.views import (
     AuditLogListAPIView,
     AuditLogRetrieveAPIView,
 )
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularSwaggerView,
+)
 urlpatterns = [
 
     path(
@@ -120,4 +124,20 @@ path(
     AuditLogRetrieveAPIView.as_view(),
     name="audit-log-detail",
 ),
+# OpenAPI schema
+path(
+    "schema/",
+    SpectacularAPIView.as_view(),
+    name="schema",
+),
+
+# Swagger UI
+path(
+    "docs/",
+    SpectacularSwaggerView.as_view(
+        url_name="schema",
+    ),
+    name="swagger-ui",
+),
+
 ]

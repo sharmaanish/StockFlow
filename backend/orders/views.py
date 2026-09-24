@@ -8,6 +8,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiTypes,
+    extend_schema,
+)
+
 from accounts.permissions import IsReadOnly, IsStaff
 from catalog.models import Product
 from customers.models import Customer
@@ -61,6 +67,54 @@ class OrderListCreateAPIView(APIView):
 
         return [IsAuthenticated()]
 
+    @extend_schema(
+        tags=["Orders"],
+        summary="List orders",
+        description=(
+            "Returns orders belonging to the authenticated user's tenant. "
+            "Supports pagination, status filtering, searching, and ordering."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Filter orders by status. "
+                    "Use a valid Order status value."
+                ),
+            ),
+            OpenApiParameter(
+                name="search",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Search by order ID, customer ID, "
+                    "customer name, or customer email."
+                ),
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Sort by created_at or total_amount. "
+                    "Prefix the field with '-' for descending order."
+                ),
+            ),
+            OpenApiParameter(
+                name="page",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Page number for paginated results.",
+            ),
+        ],
+        responses=OrderResponseSerializer(many=True),
+    )
     def get(self, request):
         """
         List orders belonging to the authenticated user's tenant.
@@ -171,6 +225,18 @@ class OrderListCreateAPIView(APIView):
             serializer.data
         )
 
+    @extend_schema(
+        tags=["Orders"],
+        summary="Create an order",
+        description=(
+            "Creates a new order for the authenticated user's tenant."
+        ),
+        request=OrderCreateSerializer,
+        responses={
+            201: OrderResponseSerializer,
+            400: None,
+        },
+    )
     def post(self, request):
         """
         Create a new order for the authenticated user's tenant.
@@ -238,6 +304,27 @@ class OrderRetrieveAPIView(APIView):
 
     permission_classes = [IsReadOnly]
 
+    @extend_schema(
+        tags=["Orders"],
+        summary="Retrieve an order",
+        description=(
+            "Returns a single order belonging to the "
+            "authenticated user's tenant."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="order_id",
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="UUID of the order to retrieve.",
+            ),
+        ],
+        responses={
+            200: OrderResponseSerializer,
+            404: None,
+        },
+    )
     def get(self, request, order_id):
         tenant = request.user.tenant
 
@@ -261,6 +348,29 @@ class OrderRetrieveAPIView(APIView):
 class OrderConfirmAPIView(APIView):
     permission_classes = [IsStaff]
 
+    @extend_schema(
+        tags=["Orders"],
+        summary="Confirm an order",
+        description=(
+            "Confirms an order using the order lifecycle service. "
+            "Requires Staff, Manager, or Admin access."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="order_id",
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="UUID of the order to confirm.",
+            ),
+        ],
+        request=None,
+        responses={
+            200: OrderResponseSerializer,
+            400: None,
+            404: None,
+        },
+    )
     def post(self, request, order_id):
         tenant = request.user.tenant
 
@@ -297,6 +407,29 @@ class OrderConfirmAPIView(APIView):
 class OrderCancelAPIView(APIView):
     permission_classes = [IsStaff]
 
+    @extend_schema(
+        tags=["Orders"],
+        summary="Cancel an order",
+        description=(
+            "Cancels an order using the order lifecycle service. "
+            "Requires Staff, Manager, or Admin access."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="order_id",
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="UUID of the order to cancel.",
+            ),
+        ],
+        request=None,
+        responses={
+            200: OrderResponseSerializer,
+            400: None,
+            404: None,
+        },
+    )
     def post(self, request, order_id):
         tenant = request.user.tenant
 
@@ -333,6 +466,29 @@ class OrderCancelAPIView(APIView):
 class OrderStartProcessingAPIView(APIView):
     permission_classes = [IsStaff]
 
+    @extend_schema(
+        tags=["Orders"],
+        summary="Start order processing",
+        description=(
+            "Moves an order into processing using the order "
+            "lifecycle service. Requires Staff, Manager, or Admin access."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="order_id",
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="UUID of the order to start processing.",
+            ),
+        ],
+        request=None,
+        responses={
+            200: OrderResponseSerializer,
+            400: None,
+            404: None,
+        },
+    )
     def post(self, request, order_id):
         tenant = request.user.tenant
 
@@ -369,6 +525,29 @@ class OrderStartProcessingAPIView(APIView):
 class OrderShipAPIView(APIView):
     permission_classes = [IsStaff]
 
+    @extend_schema(
+        tags=["Orders"],
+        summary="Ship an order",
+        description=(
+            "Moves an order to the shipped state using the order "
+            "lifecycle service. Requires Staff, Manager, or Admin access."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="order_id",
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="UUID of the order to ship.",
+            ),
+        ],
+        request=None,
+        responses={
+            200: OrderResponseSerializer,
+            400: None,
+            404: None,
+        },
+    )
     def post(self, request, order_id):
         tenant = request.user.tenant
 
@@ -405,6 +584,29 @@ class OrderShipAPIView(APIView):
 class OrderDeliverAPIView(APIView):
     permission_classes = [IsStaff]
 
+    @extend_schema(
+        tags=["Orders"],
+        summary="Deliver an order",
+        description=(
+            "Marks an order as delivered using the order "
+            "lifecycle service. Requires Staff, Manager, or Admin access."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="order_id",
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="UUID of the order to deliver.",
+            ),
+        ],
+        request=None,
+        responses={
+            200: OrderResponseSerializer,
+            400: None,
+            404: None,
+        },
+    )
     def post(self, request, order_id):
         tenant = request.user.tenant
 

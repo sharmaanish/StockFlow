@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "payments",
     "shipping",
     "audit",
+    "drf_spectacular",
 ]
 
 REST_FRAMEWORK = {
@@ -64,6 +65,11 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         # All API requests use JWT authentication by default.
     ],
+
+    # Automatically generate OpenAPI schema for DRF endpoints.
+    "DEFAULT_SCHEMA_CLASS": (
+        "drf_spectacular.openapi.AutoSchema"
+    ),
 
     "DEFAULT_PAGINATION_CLASS": (
         "rest_framework.pagination.PageNumberPagination"
@@ -102,7 +108,47 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 ASGI_APPLICATION = "config.asgi.application"
 
+SPECTACULAR_SETTINGS = {
+    "TITLE": "StockFlow API",
+    "DESCRIPTION": (
+        "API documentation for the StockFlow "
+        "Order and Inventory Management Platform."
+    ),
+    "VERSION": "1.0.0",
+        # Group endpoints into logical sections in Swagger UI.
+    "TAGS": [
+        {
+            "name": "Authentication",
+            "description": "Authentication and user identity endpoints.",
+        },
+        {
+            "name": "Health",
+            "description": "Application health endpoints.",
+        },
+        {
+            "name": "Orders",
+            "description": "Order creation, retrieval, and lifecycle management.",
+        },
+        {
+            "name": "Payments",
+            "description": "Payment creation and management.",
+        },
+        {
+            "name": "Shipping",
+            "description": "Shipment creation, retrieval, and status management.",
+        },
+        {
+            "name": "Audit",
+            "description": "Audit log retrieval and tracking.",
+        },
+    ],
 
+        # Tell Swagger that StockFlow uses JWT Bearer authentication.
+    "AUTHENTICATION_WHITELIST": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+
+}
 # -----------------------------------------------------------------------------
 # Templates
 # -----------------------------------------------------------------------------
