@@ -23,6 +23,30 @@ class PaymentAPITestCase(APITestCase):
             password="test-password",
         )
 
+        # Admin user for RBAC tests.
+        self.admin_user = User.objects.create_user(
+            tenant=self.tenant,
+            email="payment-admin@example.com",
+            password="admin-password",
+            role=User.Role.ADMIN,
+        )
+
+        # Manager user for RBAC tests.
+        self.manager_user = User.objects.create_user(
+            tenant=self.tenant,
+            email="payment-manager@example.com",
+            password="manager-password",
+            role=User.Role.MANAGER,
+        )
+
+        # Viewer user for RBAC tests.
+        self.viewer_user = User.objects.create_user(
+            tenant=self.tenant,
+            email="payment-viewer@example.com",
+            password="viewer-password",
+            role=User.Role.VIEWER,
+        )
+
         self.customer = Customer.objects.create(
             tenant=self.tenant,
             name="Test Customer",
@@ -78,6 +102,86 @@ class PaymentAPITestCase(APITestCase):
             Payment.objects.filter(
                 order=self.order,
             ).exists()
+        )
+
+    def test_create_payment_admin_allowed(self):
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
+
+        response = self.client.post(
+            "/api/v1/payments/",
+            {
+                "order": str(self.order.id),
+                "amount": "500.00",
+                "method": Payment.Method.UPI,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201,
+        )
+
+    def test_create_payment_manager_allowed(self):
+        self.client.force_authenticate(
+            user=self.manager_user,
+        )
+
+        response = self.client.post(
+            "/api/v1/payments/",
+            {
+                "order": str(self.order.id),
+                "amount": "500.00",
+                "method": Payment.Method.UPI,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201,
+        )
+
+    def test_create_payment_staff_allowed(self):
+        self.client.force_authenticate(
+            user=self.user,
+        )
+
+        response = self.client.post(
+            "/api/v1/payments/",
+            {
+                "order": str(self.order.id),
+                "amount": "500.00",
+                "method": Payment.Method.UPI,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201,
+        )
+
+    def test_create_payment_viewer_forbidden(self):
+        self.client.force_authenticate(
+            user=self.viewer_user,
+        )
+
+        response = self.client.post(
+            "/api/v1/payments/",
+            {
+                "order": str(self.order.id),
+                "amount": "500.00",
+                "method": Payment.Method.UPI,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            403,
         )
 
     def test_create_payment_requires_authentication(self):

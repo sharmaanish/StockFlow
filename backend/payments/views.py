@@ -2,10 +2,10 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import IsStaff
 from orders.models import Order
 from payments.serializers import (
     PaymentCreateSerializer,
@@ -15,7 +15,7 @@ from payments.services import create_payment
 
 
 class PaymentCreateAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request):
         serializer = PaymentCreateSerializer(

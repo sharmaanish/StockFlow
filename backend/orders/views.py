@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import IsReadOnly, IsStaff
 from catalog.models import Product
 from customers.models import Customer
 from orders.models import Order
@@ -39,8 +40,26 @@ class OrderPagination(PageNumberPagination):
 
 
 class OrderListCreateAPIView(APIView):
-    permission_classes = [IsAuthenticated]
     pagination_class = OrderPagination
+
+    def get_permissions(self):
+        """
+        Apply different permissions based on the HTTP method.
+
+        GET:
+            All authenticated roles, including Viewer.
+
+        POST:
+            Admin, Manager, and Staff.
+        """
+
+        if self.request.method == "GET":
+            return [IsReadOnly()]
+
+        if self.request.method == "POST":
+            return [IsStaff()]
+
+        return [IsAuthenticated()]
 
     def get(self, request):
         """
@@ -217,7 +236,7 @@ class OrderRetrieveAPIView(APIView):
     user's tenant.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsReadOnly]
 
     def get(self, request, order_id):
         tenant = request.user.tenant
@@ -240,7 +259,7 @@ class OrderRetrieveAPIView(APIView):
 
 
 class OrderConfirmAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request, order_id):
         tenant = request.user.tenant
@@ -276,7 +295,7 @@ class OrderConfirmAPIView(APIView):
 
 
 class OrderCancelAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request, order_id):
         tenant = request.user.tenant
@@ -312,15 +331,16 @@ class OrderCancelAPIView(APIView):
 
 
 class OrderStartProcessingAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request, order_id):
         tenant = request.user.tenant
 
+        # Fetch by ID first so the service layer can explicitly
+        # validate tenant ownership.
         order = get_object_or_404(
             Order,
             id=order_id,
-            tenant=tenant,
         )
 
         try:
@@ -347,7 +367,7 @@ class OrderStartProcessingAPIView(APIView):
 
 
 class OrderShipAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request, order_id):
         tenant = request.user.tenant
@@ -383,7 +403,7 @@ class OrderShipAPIView(APIView):
 
 
 class OrderDeliverAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request, order_id):
         tenant = request.user.tenant

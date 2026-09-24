@@ -72,6 +72,9 @@ REST_FRAMEWORK = {
 
     "PAGE_SIZE": 20,
     # Return a maximum of 20 objects per page by default.
+    "EXCEPTION_HANDLER": (
+        "config.api.exceptions.custom_exception_handler"
+    ),
 }
 
 # -----------------------------------------------------------------------------

@@ -2,10 +2,10 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import IsReadOnly, IsStaff
 from orders.models import Order
 from shipping.models import Shipment
 from shipping.serializers import (
@@ -20,12 +20,22 @@ from shipping.services import (
 
 
 class ShipmentCreateAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    Create a shipment for an order.
+
+    Allowed roles:
+        Admin
+        Manager
+        Staff
+    """
+
+    permission_classes = [IsStaff]
 
     def post(self, request):
         serializer = ShipmentCreateSerializer(
             data=request.data,
         )
+
         serializer.is_valid(
             raise_exception=True,
         )
@@ -61,12 +71,22 @@ class ShipmentCreateAPIView(APIView):
 
 
 class ShipmentStatusUpdateAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    Update the status of an existing shipment.
+
+    Allowed roles:
+        Admin
+        Manager
+        Staff
+    """
+
+    permission_classes = [IsStaff]
 
     def post(self, request, shipment_id):
         serializer = ShipmentStatusUpdateSerializer(
             data=request.data,
         )
+
         serializer.is_valid(
             raise_exception=True,
         )
@@ -103,7 +123,14 @@ class ShipmentStatusUpdateAPIView(APIView):
 
 
 class ShipmentRetrieveAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    Retrieve a shipment belonging to the authenticated
+    user's tenant.
+
+    All authenticated roles can read shipment information.
+    """
+
+    permission_classes = [IsReadOnly]
 
     def get(self, request, shipment_id):
         tenant = request.user.tenant

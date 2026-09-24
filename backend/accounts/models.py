@@ -1,19 +1,31 @@
 import uuid
 
+from django.contrib.auth.base_user import (
+    AbstractBaseUser,
+    BaseUserManager,
+)
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
-from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
+
 from tenants.models import Tenant
 
 
 class UserManager(BaseUserManager):
-    def create_user(self, tenant, email, password=None, **extra_fields):
+    def create_user(
+        self,
+        tenant,
+        email,
+        password=None,
+        **extra_fields,
+    ):
         if not email:
             raise ValueError("Email is required.")
 
         email = email.lower().strip()
+
         if not isinstance(tenant, Tenant):
             tenant = Tenant.objects.get(pk=tenant)
+
         user = self.model(
             tenant=tenant,
             email=email,
@@ -25,9 +37,25 @@ class UserManager(BaseUserManager):
 
         return user
 
-    def create_superuser(self, tenant, email, password=None, **extra_fields):
-        extra_fields.setdefault("is_staff", True)
-        extra_fields.setdefault("is_superuser", True)
+    def create_superuser(
+        self,
+        tenant,
+        email,
+        password=None,
+        **extra_fields,
+    ):
+        extra_fields.setdefault(
+            "is_staff",
+            True,
+        )
+        extra_fields.setdefault(
+            "is_superuser",
+            True,
+        )
+        extra_fields.setdefault(
+            "role",
+            "admin",
+        )
 
         return self.create_user(
             tenant=tenant,
@@ -38,6 +66,13 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+
+    class Role(models.TextChoices):
+        ADMIN = "admin", "Admin"
+        MANAGER = "manager", "Manager"
+        STAFF = "staff", "Staff"
+        VIEWER = "viewer", "Viewer"
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -53,6 +88,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(
         unique=True,
     )
+
     first_name = models.CharField(
         max_length=150,
         blank=True,
@@ -61,6 +97,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(
         max_length=150,
         blank=True,
+    )
+
+    role = models.CharField(
+        max_length=20,
+        choices=Role.choices,
+        default=Role.STAFF,
     )
 
     is_active = models.BooleanField(

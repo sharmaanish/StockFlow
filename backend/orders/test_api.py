@@ -24,6 +24,30 @@ class OrderAPITestCase(APITestCase):
             password="test-password",
         )
 
+        # RBAC test users.
+        # These are additional users so the existing tests can
+        # continue using self.user as the default Staff user.
+        self.admin_user = User.objects.create_user(
+            tenant=self.tenant,
+            email="admin@example.com",
+            password="admin-password",
+            role=User.Role.ADMIN,
+        )
+
+        self.manager_user = User.objects.create_user(
+            tenant=self.tenant,
+            email="manager@example.com",
+            password="manager-password",
+            role=User.Role.MANAGER,
+        )
+
+        self.viewer_user = User.objects.create_user(
+            tenant=self.tenant,
+            email="viewer@example.com",
+            password="viewer-password",
+            role=User.Role.VIEWER,
+        )
+
         self.customer = Customer.objects.create(
             tenant=self.tenant,
             name="Test Customer",
@@ -44,23 +68,31 @@ class OrderAPITestCase(APITestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_create_order(self):
+        payload = {
+            "customer": str(self.customer.id),
+            "items": [
+                {
+                    "product": str(self.product.id),
+                    "quantity": 2,
+                }
+            ],
+        }
+
+        # Default user is Staff.
+        self.client.force_authenticate(user=self.user)
+
         response = self.client.post(
             "/api/v1/orders/",
-            {
-                "customer": str(self.customer.id),
-                "items": [
-                    {
-                        "product": str(self.product.id),
-                        "quantity": 2,
-                    }
-                ],
-            },
+            payload,
             format="json",
         )
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["status"], "pending")
-        self.assertEqual(response.data["total_amount"], "200.00")
+        self.assertEqual(
+            Decimal(response.data["total_amount"]),
+            Decimal("200.00"),
+        )
 
         self.inventory.refresh_from_db()
 
@@ -68,6 +100,39 @@ class OrderAPITestCase(APITestCase):
             self.inventory.reserved_quantity,
             2,
         )
+
+        # Admin should be allowed to create an order.
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            "/api/v1/orders/",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        # Manager should be allowed to create an order.
+        self.client.force_authenticate(user=self.manager_user)
+
+        response = self.client.post(
+            "/api/v1/orders/",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        # Viewer should NOT be allowed to create an order.
+        self.client.force_authenticate(user=self.viewer_user)
+
+        response = self.client.post(
+            "/api/v1/orders/",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     def test_create_order_with_insufficient_inventory(self):
         response = self.client.post(
@@ -1504,4 +1569,202 @@ class OrderAPITestCase(APITestCase):
                 "pending",
             )
 
-            
+    def test_retrieve_order_all_roles_allowed(self):
+        # Create an order as Staff so we have an order to retrieve.
+        self.client.force_authenticate(user=self.user)
+
+        create_response = self.client.post(
+            "/api/v1/orders/",
+            {
+                "customer": str(self.customer.id),
+                "items": [
+                    {
+                        "product": str(self.product.id),
+                        "quantity": 1,
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+
+        order_id = create_response.data["id"]
+
+        # All authenticated roles can read orders.
+        for user in [
+            self.admin_user,
+            self.manager_user,
+            self.user,
+            self.viewer_user,
+        ]:
+            self.client.force_authenticate(user=user)
+
+            response = self.client.get(
+                f"/api/v1/orders/{order_id}/",
+            )
+
+            self.assertEqual(response.status_code, 200)
+
+
+    def test_confirm_order_viewer_forbidden(self):
+        # Create an order as Staff.
+        self.client.force_authenticate(user=self.user)
+
+        create_response = self.client.post(
+            "/api/v1/orders/",
+            {
+                "customer": str(self.customer.id),
+                "items": [
+                    {
+                        "product": str(self.product.id),
+                        "quantity": 1,
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+
+        order_id = create_response.data["id"]
+
+        # Viewer should not be allowed to confirm an order.
+        self.client.force_authenticate(user=self.viewer_user)
+
+        response = self.client.post(
+            f"/api/v1/orders/{order_id}/confirm/",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+    def test_cancel_order_viewer_forbidden(self):
+        # Create an order as Staff.
+        self.client.force_authenticate(user=self.user)
+
+        create_response = self.client.post(
+            "/api/v1/orders/",
+            {
+                "customer": str(self.customer.id),
+                "items": [
+                    {
+                        "product": str(self.product.id),
+                        "quantity": 1,
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+
+        order_id = create_response.data["id"]
+
+        # Viewer should not be allowed to cancel an order.
+        self.client.force_authenticate(user=self.viewer_user)
+
+        response = self.client.post(
+            f"/api/v1/orders/{order_id}/cancel/",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+    def test_start_processing_order_viewer_forbidden(self):
+        # Create an order as Staff.
+        self.client.force_authenticate(user=self.user)
+
+        create_response = self.client.post(
+            "/api/v1/orders/",
+            {
+                "customer": str(self.customer.id),
+                "items": [
+                    {
+                        "product": str(self.product.id),
+                        "quantity": 1,
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+
+        order_id = create_response.data["id"]
+
+        # Viewer should not be allowed to start processing.
+        self.client.force_authenticate(user=self.viewer_user)
+
+        response = self.client.post(
+            f"/api/v1/orders/{order_id}/process/",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+    def test_ship_order_viewer_forbidden(self):
+        # Create an order as Staff.
+        self.client.force_authenticate(user=self.user)
+
+        create_response = self.client.post(
+            "/api/v1/orders/",
+            {
+                "customer": str(self.customer.id),
+                "items": [
+                    {
+                        "product": str(self.product.id),
+                        "quantity": 1,
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+
+        order_id = create_response.data["id"]
+
+        # Viewer should not be allowed to ship an order.
+        self.client.force_authenticate(user=self.viewer_user)
+
+        response = self.client.post(
+            f"/api/v1/orders/{order_id}/ship/",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+    def test_deliver_order_viewer_forbidden(self):
+        # Create an order as Staff.
+        self.client.force_authenticate(user=self.user)
+
+        create_response = self.client.post(
+            "/api/v1/orders/",
+            {
+                "customer": str(self.customer.id),
+                "items": [
+                    {
+                        "product": str(self.product.id),
+                        "quantity": 1,
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+
+        order_id = create_response.data["id"]
+
+        # Viewer should not be allowed to deliver an order.
+        self.client.force_authenticate(user=self.viewer_user)
+
+        response = self.client.post(
+            f"/api/v1/orders/{order_id}/deliver/",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+        

@@ -1,15 +1,23 @@
 from django.shortcuts import get_object_or_404
 
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import IsManager
 from audit.models import AuditLog
 from audit.serializers import AuditLogResponseSerializer
 
 
 class AuditLogListAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    List audit logs belonging to the authenticated user's tenant.
+
+    Allowed roles:
+        Admin
+        Manager
+    """
+
+    permission_classes = [IsManager]
 
     def get(self, request):
         tenant = request.user.tenant
@@ -30,7 +38,16 @@ class AuditLogListAPIView(APIView):
 
 
 class AuditLogRetrieveAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    Retrieve a single audit log belonging to the
+    authenticated user's tenant.
+
+    Allowed roles:
+        Admin
+        Manager
+    """
+
+    permission_classes = [IsManager]
 
     def get(self, request, audit_id):
         tenant = request.user.tenant

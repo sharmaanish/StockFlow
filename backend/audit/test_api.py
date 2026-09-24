@@ -19,16 +19,44 @@ class AuditLogAPITestCase(APITestCase):
             slug="other-tenant",
         )
 
+        # Manager is used because audit-log endpoints
+        # require Manager-level permissions.
         self.user = User.objects.create_user(
             email="audit@test.com",
             password="testpassword123",
             tenant=self.tenant,
+            role=User.Role.MANAGER,
+        )
+
+        # Admin is also allowed to access audit logs.
+        self.admin_user = User.objects.create_user(
+            email="audit-admin@test.com",
+            password="testpassword123",
+            tenant=self.tenant,
+            role=User.Role.ADMIN,
+        )
+
+        # Staff is not allowed to access audit logs.
+        self.staff_user = User.objects.create_user(
+            email="audit-staff@test.com",
+            password="testpassword123",
+            tenant=self.tenant,
+            role=User.Role.STAFF,
+        )
+
+        # Viewer is not allowed to access audit logs.
+        self.viewer_user = User.objects.create_user(
+            email="audit-viewer@test.com",
+            password="testpassword123",
+            tenant=self.tenant,
+            role=User.Role.VIEWER,
         )
 
         self.other_user = User.objects.create_user(
             email="other@test.com",
             password="testpassword123",
             tenant=self.other_tenant,
+            role=User.Role.MANAGER,
         )
 
         self.audit_log = AuditLog.objects.create(
@@ -61,6 +89,62 @@ class AuditLogAPITestCase(APITestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_401_UNAUTHORIZED,
+        )
+
+    def test_list_admin_allowed(self):
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
+
+        response = self.client.get(
+            "/api/v1/audit-logs/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_list_manager_allowed(self):
+        self.client.force_authenticate(
+            user=self.user,
+        )
+
+        response = self.client.get(
+            "/api/v1/audit-logs/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_list_staff_forbidden(self):
+        self.client.force_authenticate(
+            user=self.staff_user,
+        )
+
+        response = self.client.get(
+            "/api/v1/audit-logs/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_list_viewer_forbidden(self):
+        self.client.force_authenticate(
+            user=self.viewer_user,
+        )
+
+        response = self.client.get(
+            "/api/v1/audit-logs/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
         )
 
     def test_list_returns_only_current_tenant_logs(self):
@@ -152,6 +236,62 @@ class AuditLogAPITestCase(APITestCase):
         self.assertEqual(
             response.data["action"],
             "ORDER_CREATED",
+        )
+
+    def test_retrieve_audit_log_admin_allowed(self):
+        self.client.force_authenticate(
+            user=self.admin_user,
+        )
+
+        response = self.client.get(
+            f"/api/v1/audit-logs/{self.audit_log.id}/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_retrieve_audit_log_manager_allowed(self):
+        self.client.force_authenticate(
+            user=self.user,
+        )
+
+        response = self.client.get(
+            f"/api/v1/audit-logs/{self.audit_log.id}/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_retrieve_audit_log_staff_forbidden(self):
+        self.client.force_authenticate(
+            user=self.staff_user,
+        )
+
+        response = self.client.get(
+            f"/api/v1/audit-logs/{self.audit_log.id}/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_retrieve_audit_log_viewer_forbidden(self):
+        self.client.force_authenticate(
+            user=self.viewer_user,
+        )
+
+        response = self.client.get(
+            f"/api/v1/audit-logs/{self.audit_log.id}/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
         )
 
     def test_retrieve_other_tenant_log_returns_404(self):
